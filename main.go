@@ -33,6 +33,10 @@ func main() {
 
 	e := echo.New()
 	e.Add("GET", "/image/offset/:ip", offsetHandler(ctx, upstream), middleware.Logger())
+	e.Add("GET", "/__health", func(c echo.Context) error {
+		// todo: check that the browser actually works
+		return c.String(200, "ok")
+	})
 	e.Start(":8000")
 
 	// buf, err := takeScreenshot(ctx, "17.253.2.251")
