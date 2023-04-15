@@ -7,6 +7,11 @@ import (
 	"os"
 	"time"
 
+	"net/http"
+	"net/http/pprof"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/labstack/echo/v4"
@@ -22,18 +27,25 @@ func main() {
 		os.Exit(2)
 	}
 
-	ctx, cancel := chromedp.NewContext(
-		context.Background(),
-		// chromedp.WithDebugf(log.Printf),
+	opts := append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.DisableGPU,
 	)
+	// create chromedp's context
+	parentCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
 
-	if err := chromedp.Run(ctx); err != nil {
-		panic(err)
-	}
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.Handle("/metrics", promhttp.Handler())
+		slog.Info("metrics and profile listening on :8001")
+		// go func() { log.Fatal(http.ListenAndServe(":6060", mux)) }()
+		log.Fatal(http.ListenAndServe(":8001", mux))
+	}()
 
 	e := echo.New()
-	e.Add("GET", "/image/offset/:ip", offsetHandler(ctx, upstream), middleware.Logger())
+	e.Add("GET", "/image/offset/:ip", offsetHandler(parentCtx, upstream), middleware.Logger())
 	e.Add("GET", "/__health", func(c echo.Context) error {
 		// todo: check that the browser actually works
 		return c.String(200, "ok")
@@ -66,7 +78,10 @@ func offsetHandler(mainCtx context.Context, upstream string) func(echo.Context) 
 
 func takeScreenshot(mainCtx context.Context, upstream, ip string) ([]byte, error) {
 
-	ctx, cancel := chromedp.NewContext(mainCtx)
+	ctx, cancel := chromedp.NewContext(
+		mainCtx,
+		// chromedp.WithDebugf(log.Printf),
+	)
 	defer cancel()
 
 	url := fmt.Sprintf("%s/scores/%s?graph_only=1", upstream, ip)
