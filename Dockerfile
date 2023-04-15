@@ -1,4 +1,4 @@
-FROM golang:1.20.2 AS build
+FROM golang:1.20.3 AS build
 
 ADD . /src
 
