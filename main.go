@@ -66,7 +66,8 @@ func offsetHandler(mainCtx context.Context, upstream string) func(echo.Context) 
 
 func takeScreenshot(mainCtx context.Context, upstream, ip string) ([]byte, error) {
 
-	ctx, _ := chromedp.NewContext(mainCtx)
+	ctx, cancel := chromedp.NewContext(mainCtx)
+	defer cancel()
 
 	url := fmt.Sprintf("%s/scores/%s?graph_only=1", upstream, ip)
 
