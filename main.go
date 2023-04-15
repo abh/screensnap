@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -86,6 +87,10 @@ func takeScreenshot(mainCtx context.Context, upstream, ip string) ([]byte, error
 	// if err := os.WriteFile("fullScreenshot.png", buf, 0o644); err != nil {
 	// 	log.Fatal(err)
 	// }
+
+	if err := chromedp.Run(ctx, page.Close()); err != nil {
+		slog.Error("could not close tab", "err", err)
+	}
 
 	return buf, nil
 
