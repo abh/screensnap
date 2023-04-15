@@ -118,9 +118,14 @@ func elementScreenshot(urlstr, sel string, res *[]byte) chromedp.Tasks {
 	viewX := 233
 	viewY := 501
 
+	chromedp.EmulateReset()
+
+	// retina / hidpi / 2x screenshot
+	// emulateOpts := chromedp.EmulateScale(2)
+
 	return chromedp.Tasks{
 		chromedp.Navigate(urlstr),
-		chromedp.EmulateViewport(int64(viewY), int64(viewX)),
+		chromedp.EmulateViewport(int64(viewY), int64(viewX)), // emulateOpts),
 		chromedp.WaitReady("#loaded", chromedp.NodeVisible),
 		chromedp.Sleep(100 * time.Millisecond),
 		chromedp.Screenshot(sel, res, chromedp.NodeVisible),
