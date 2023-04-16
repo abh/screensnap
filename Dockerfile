@@ -7,9 +7,14 @@ WORKDIR /src
 # bake dependencies into layer to avoid redownoading if they haven't changed.
 COPY go.mod .
 COPY go.sum .
-RUN go mod download
 
-RUN go build -v
+RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
+    go mod download
+
+RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
+    --mount=type=cache,id=gobuild,target=/root/.cache/go-build \
+    go build -v
+
 RUN ls -la
 
 FROM chromedp/headless-shell:latest
