@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"net/http"
@@ -26,6 +27,7 @@ func main() {
 		time.Sleep(1 * time.Second)
 		os.Exit(2)
 	}
+	upstream = strings.TrimSuffix(upstream, "/")
 
 	opts := append(
 		chromedp.DefaultExecAllocatorOptions[:],
