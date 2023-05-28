@@ -16,9 +16,9 @@ steps:
       - name: gopkg
         path: /cache
     commands:
+      - go mod vendor
       - go test -v
       - go build
-      - go mod vendor
 
   - name: docker
     image: harbor.ntppool.org/ntppool/drone-kaniko:main
@@ -48,6 +48,6 @@ volumes:
 
 ---
 kind: signature
-hmac: febb6d5fa0a07e21a1479309f46ab5d1fee8469e7e53f003c14be1c96e8ff560
+hmac: d17657f7951fb128963bad847e85dec59f4e5e8b3f6a30328c402edd46de6a67
 
 ...
