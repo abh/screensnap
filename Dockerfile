@@ -1,4 +1,4 @@
-FROM golang:1.20.3 AS build
+FROM golang:1.20.4 AS build
 
 ADD . /src
 
@@ -18,7 +18,7 @@ RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
 RUN ls -la
 
 FROM chromedp/headless-shell:latest
-RUN apt update; apt install dumb-init
+RUN apt update; apt install -y dumb-init procps
 
 WORKDIR /app
 COPY --from=build /src/screensnap /app/screensnap
