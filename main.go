@@ -34,8 +34,18 @@ func main() {
 		chromedp.DisableGPU,
 	)
 	// create chromedp's context
-	parentCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	parentCtx, execCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer execCancel()
+
+	// create a new browser
+	browserCtx, cancel := chromedp.NewContext(context.Background())
 	defer cancel()
+
+	// start the browser without a timeout
+	if err := chromedp.Run(browserCtx); err != nil {
+		slog.Error("start browser (chromedp.Run)", "err", err)
+		os.Exit(10)
+	}
 
 	go func() {
 		mux := http.NewServeMux()
