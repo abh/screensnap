@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -19,6 +19,14 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"golang.org/x/exp/slog"
 )
+
+type httpErr struct {
+	status int
+}
+
+func (m *httpErr) Error() string {
+	return fmt.Sprintf("http status %d", m.status)
+}
 
 func main() {
 	upstream := os.Getenv("upstream_base")
@@ -53,7 +61,9 @@ func main() {
 		mux.Handle("/metrics", promhttp.Handler())
 		slog.Info("metrics and profile listening on :8001")
 		// go func() { log.Fatal(http.ListenAndServe(":6060", mux)) }()
-		log.Fatal(http.ListenAndServe(":8001", mux))
+		err := http.ListenAndServe(":8001", mux)
+		slog.Error("listenAndServe", "err", err)
+		os.Exit(2)
 	}()
 
 	e := echo.New()
@@ -62,15 +72,12 @@ func main() {
 		// todo: check that the browser actually works
 		return c.String(200, "ok")
 	})
-	e.Start(":8000")
 
-	// buf, err := takeScreenshot(ctx, "17.253.2.251")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// if err := os.WriteFile("offset.png", buf, 0o644); err != nil {
-	// 	log.Fatal(err)
-	// }
+	err := e.Start(":8000")
+	if err != nil {
+		slog.Error("echo Start", "err", err)
+		os.Exit(2)
+	}
 
 }
 
@@ -81,6 +88,12 @@ func offsetHandler(mainCtx context.Context, upstream string) func(echo.Context) 
 
 		buf, err := takeScreenshot(mainCtx, upstream, ipStr)
 		if err != nil {
+			var hErr *httpErr
+			if errors.As(err, &hErr) {
+				if hErr.status == 404 {
+					return c.String(404, "Not found")
+				}
+			}
 			return c.String(500, err.Error())
 		}
 
@@ -96,62 +109,47 @@ func takeScreenshot(mainCtx context.Context, upstream, ip string) ([]byte, error
 	)
 	defer cancel()
 
+	defer func() {
+		if err := chromedp.Run(ctx, page.Close()); err != nil {
+			slog.Error("could not close tab", "err", err)
+		}
+	}()
+
 	url := fmt.Sprintf("%s/scores/%s?graph_only=1", upstream, ip)
-
-	// capture screenshot of an element
-	var buf []byte
-	if err := chromedp.Run(ctx, elementScreenshot(url, `#graph`, &buf)); err != nil {
-		log.Fatal(err)
-	}
-
-	// if err := chromedp.Run(ctx, fullScreenshot(url, 90, &buf)); err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// // capture entire browser viewport, returning png with quality=90
-	// if err := chromedp.Run(ctx, fullScreenshot(url, 90, &buf)); err != nil {
-	// 	log.Fatal(err)
-	// }
-	// if err := os.WriteFile("fullScreenshot.png", buf, 0o644); err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	if err := chromedp.Run(ctx, page.Close()); err != nil {
-		slog.Error("could not close tab", "err", err)
-	}
-
-	return buf, nil
-
-}
-
-// elementScreenshot takes a screenshot of a specific element.
-func elementScreenshot(urlstr, sel string, res *[]byte) chromedp.Tasks {
 
 	viewX := 233
 	viewY := 501
 
 	chromedp.EmulateReset()
-
 	// retina / hidpi / 2x screenshot
 	// emulateOpts := chromedp.EmulateScale(2)
 
-	return chromedp.Tasks{
-		chromedp.Navigate(urlstr),
+	resp, err := chromedp.RunResponse(ctx, chromedp.Tasks{
+		chromedp.Navigate(url),
 		chromedp.EmulateViewport(int64(viewY), int64(viewX)), // emulateOpts),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Status != 200 {
+		if resp.Status == 404 {
+			return nil, &httpErr{status: 404}
+		}
+		slog.Info("invalid response status", "status", resp.Status, "url", url)
+		return nil, fmt.Errorf("response status %d", resp.Status)
+	}
+
+	// capture screenshot of an element
+	var buf []byte
+
+	if err = chromedp.Run(ctx, chromedp.Tasks{
 		chromedp.WaitReady("#loaded", chromedp.NodeVisible),
 		chromedp.Sleep(100 * time.Millisecond),
-		chromedp.Screenshot(sel, res, chromedp.NodeVisible),
+		chromedp.Screenshot(`#graph`, &buf, chromedp.NodeVisible),
+	}); err != nil {
+		slog.ErrorCtx(ctx, "screenshot", "err", err)
 	}
-}
 
-// fullScreenshot takes a screenshot of the entire browser viewport.
-//
-// Note: chromedp.FullScreenshot overrides the device's emulation settings. Use
-// device.Reset to reset the emulation and viewport settings.
-// func fullScreenshot(urlstr string, quality int, res *[]byte) chromedp.Tasks {
-// 	return chromedp.Tasks{
-// 		chromedp.Navigate(urlstr),
-// 		chromedp.WaitReady("#loaded", chromedp.NodeVisible),
-// 		chromedp.FullScreenshot(res, quality),
-// 	}
-// }
+	return buf, nil
+
+}
