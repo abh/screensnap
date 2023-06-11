@@ -3,7 +3,7 @@ module go.askask.com/screensnap
 go 1.20
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20230524011726-8501c74e8228
+	github.com/chromedp/cdproto v0.0.0-20230611221135-4cd95c996604
 	github.com/chromedp/chromedp v0.9.1
 	github.com/labstack/echo/v4 v4.10.2
 	github.com/prometheus/client_golang v1.15.1
