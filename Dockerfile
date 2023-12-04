@@ -1,4 +1,4 @@
-FROM golang:1.21.5 AS build
+FROM golang:1.21.5-bullseye AS build
 
 ADD . /src
 
