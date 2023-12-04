@@ -23,6 +23,5 @@ RUN apt update; apt install -y dumb-init procps
 WORKDIR /app
 COPY --from=build /src/screensnap /app/screensnap
 
-
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["/app/screensnap"]
