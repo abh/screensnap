@@ -51,13 +51,18 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 	)
 	defer cancel()
 
+	traceID := span.SpanContext().TraceID()
+
 	defer func() {
-		span.AddEvent("closing tab")
+		span.AddEvent("closing tab", trace.WithAttributes(attribute.String("ctx.error", ctx.Err().Error())))
 		if err := chromedp.Run(ctx, page.Close()); err != nil {
-			log.ErrorContext(reqCtx, "could not close tab", "err", err)
+			log.ErrorContext(reqCtx, "could not close tab", "err", err, "trace_id", traceID.String())
 			span.RecordError(err)
 		}
 	}()
+
+	ctx, timeoutCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer timeoutCancel()
 
 	url := fmt.Sprintf("%s/scores/%s?graph_only=1", upstream, ip)
 
@@ -111,5 +116,4 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 	spanShot.End()
 
 	return buf, nil
-
 }

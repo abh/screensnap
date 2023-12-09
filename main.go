@@ -21,7 +21,6 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -149,7 +148,7 @@ func RunAPI(e *echo.Echo, parentCtx context.Context) error {
 	}
 	upstream = strings.TrimSuffix(upstream, "/")
 
-	e.Add("GET", "/image/offset/:ip", offsetHandler(parentCtx, upstream), middleware.Logger())
+	e.Add("GET", "/image/offset/:ip", offsetHandler(parentCtx, upstream))
 	e.Add("GET", "/__health", func(c echo.Context) error {
 		// todo: check that the browser actually works
 		return c.String(200, "ok")
