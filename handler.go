@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/labstack/echo/v4"
@@ -19,10 +21,14 @@ func offsetHandler(mainCtx context.Context, upstream string) func(echo.Context) 
 	return func(c echo.Context) error {
 		log := logger.Setup()
 
-		ipStr := c.Param("ip")
-		log.InfoContext(c.Request().Context(), "offsetHandler", "ip", ipStr)
+		ctx := c.Request().Context()
 
-		buf, err := takeScreenshot(mainCtx, c.Request().Context(), upstream, ipStr)
+		span := trace.SpanFromContext(ctx)
+
+		ipStr := c.Param("ip")
+		log.InfoContext(ctx, "offsetHandler", "ip", ipStr)
+
+		buf, err := takeScreenshot(mainCtx, ctx, upstream, ipStr)
 		if err != nil {
 			var hErr *httpErr
 			if errors.As(err, &hErr) {
@@ -31,6 +37,11 @@ func offsetHandler(mainCtx context.Context, upstream string) func(echo.Context) 
 				}
 			}
 			return c.String(500, err.Error())
+		}
+
+		if len(buf) == 0 {
+			span.RecordError(fmt.Errorf("empty response"))
+			return c.String(http.StatusBadGateway, "empty response")
 		}
 
 		return c.Blob(200, "image/png", buf)
@@ -78,6 +89,12 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 		trace.WithAttributes(attribute.String("url", url)),
 	)
 	resp, err := chromedp.RunResponse(ctx, chromedp.Tasks{
+		network.Enable(),
+		network.SetExtraHTTPHeaders(network.Headers(
+			map[string]interface{}{
+				"traceparent": traceID,
+			},
+		)),
 		chromedp.Navigate(url),
 		chromedp.EmulateViewport(int64(viewY), int64(viewX)), // emulateOpts),
 	})
@@ -99,6 +116,24 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 	}
 	spanRun.End()
 
+	// only wait 3 seconds for the page to load
+	loadingCtx, loadCancel := context.WithTimeout(ctx, 4*time.Second)
+	defer loadCancel()
+
+	loadingCtx, spanLoad := tracing.Tracer().Start(
+		loadingCtx, "chromedp.WaitReady",
+	)
+	if err = chromedp.Run(loadingCtx, chromedp.Tasks{
+		chromedp.WaitReady("#loaded", chromedp.NodeVisible),
+		chromedp.Sleep(200 * time.Millisecond),
+	}); err != nil {
+		log.ErrorContext(loadingCtx, "loading", "err", err)
+		spanLoad.RecordError(err)
+		// don't return the error; just take a screenshot
+		// and continue ...
+	}
+	spanLoad.End()
+
 	// capture screenshot of an element
 	var buf []byte
 
@@ -106,12 +141,12 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 		reqCtx, "chromedp.Screenshot",
 	)
 	if err = chromedp.Run(ctx, chromedp.Tasks{
-		chromedp.WaitReady("#loaded", chromedp.NodeVisible),
-		chromedp.Sleep(100 * time.Millisecond),
 		chromedp.Screenshot(`#graph`, &buf, chromedp.NodeVisible),
 	}); err != nil {
 		log.ErrorContext(reqCtx, "screenshot", "err", err)
 		spanShot.RecordError(err)
+		spanShot.End()
+		return nil, err
 	}
 	spanShot.End()
 

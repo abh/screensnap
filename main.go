@@ -15,8 +15,10 @@ import (
 	"go.ntppool.org/common/metricsserver"
 	"go.ntppool.org/common/tracing"
 	"go.ntppool.org/common/version"
+	"go.ntppool.org/common/xff/fastlyxff"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/chromedp/chromedp"
@@ -97,7 +99,7 @@ func main() {
 		log.ErrorContext(srvContext, "server shutdown", "err", err)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(srvContext, 15*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(srvContext, 10*time.Second)
 	defer cancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		log.Warn("could not shutdown echo", "err", err)
@@ -115,7 +117,51 @@ func main() {
 func RunAPI(e *echo.Echo, parentCtx context.Context) error {
 	log := logger.Setup()
 
+	trustOptions := []echo.TrustOption{
+		echo.TrustLoopback(true),
+		echo.TrustLinkLocal(false),
+		echo.TrustPrivateNet(true),
+	}
+
+	if fileName := os.Getenv("FASTLY_IPS"); len(fileName) > 0 {
+		xff, err := fastlyxff.New(fileName)
+		if err != nil {
+			return err
+		}
+		cdnTrustRanges, err := xff.EchoTrustOption()
+		if err != nil {
+			return err
+		}
+		trustOptions = append(trustOptions, cdnTrustRanges...)
+	} else {
+		log.Warn("Fastly IPs not configured (FASTLY_IPS)")
+	}
+
+	e.IPExtractor = echo.ExtractIPFromXFFHeader(trustOptions...)
+
 	e.Use(otelecho.Middleware("screensnap"))
+
+	e.Use(
+		func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				request := c.Request()
+
+				span := trace.SpanFromContext(request.Context())
+				span.SetAttributes(attribute.String("http.real_ip", c.RealIP()))
+
+				// since the Go library (temporarily?) isn't including this
+				span.SetAttributes(attribute.String("url.path", c.Path()))
+				if q := c.QueryString(); len(q) > 0 {
+					span.SetAttributes(attribute.String("url.query", q))
+				}
+
+				c.Response().Header().Set("Traceparent", span.SpanContext().TraceID().String())
+
+				return next(c)
+			}
+		},
+	)
+
 	e.Use(slogecho.NewWithConfig(log,
 		slogecho.Config{
 			WithTraceID: true,
@@ -128,19 +174,6 @@ func RunAPI(e *echo.Echo, parentCtx context.Context) error {
 			otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
 		),
 	))
-
-	e.Use(
-		func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(c echo.Context) error {
-				request := c.Request()
-
-				span := trace.SpanFromContext(request.Context())
-				c.Response().Header().Set("Traceparent", span.SpanContext().TraceID().String())
-
-				return next(c)
-			}
-		},
-	)
 
 	upstream := os.Getenv("upstream_base")
 	if len(upstream) == 0 {
