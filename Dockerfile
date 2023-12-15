@@ -23,5 +23,10 @@ RUN apt update; apt install -y dumb-init procps
 WORKDIR /app
 COPY --from=build /src/screensnap /app/screensnap
 
+# in debian bookworm, use --comment instead of --gecos
+RUN adduser --disabled-password --gecos "" chromedp
+
+USER chromedp
+
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["/app/screensnap"]
