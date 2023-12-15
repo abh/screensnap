@@ -120,8 +120,8 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 	loadingCtx, loadCancel := context.WithTimeout(ctx, 4*time.Second)
 	defer loadCancel()
 
-	loadingCtx, spanLoad := tracing.Tracer().Start(
-		loadingCtx, "chromedp.WaitReady",
+	_, spanLoad := tracing.Tracer().Start(
+		reqCtx, "chromedp.WaitReady",
 	)
 	if err = chromedp.Run(loadingCtx, chromedp.Tasks{
 		chromedp.WaitReady("#loaded", chromedp.NodeVisible),
@@ -137,7 +137,7 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 	// capture screenshot of an element
 	var buf []byte
 
-	reqCtx, spanShot := tracing.Tracer().Start(
+	_, spanShot := tracing.Tracer().Start(
 		reqCtx, "chromedp.Screenshot",
 	)
 	if err = chromedp.Run(ctx, chromedp.Tasks{
