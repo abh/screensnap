@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/network"
-	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/labstack/echo/v4"
 	"go.ntppool.org/common/logger"
@@ -60,17 +59,9 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 		mainCtx,
 		// chromedp.WithDebugf(log.Printf),
 	)
-	defer cancel()
+	defer cancel() // this will close the tab
 
 	traceID := span.SpanContext().TraceID()
-
-	defer func() {
-		span.AddEvent("closing tab", trace.WithAttributes(attribute.String("ctx.error", ctx.Err().Error())))
-		if err := chromedp.Run(ctx, page.Close()); err != nil {
-			log.ErrorContext(reqCtx, "could not close tab", "err", err, "trace_id", traceID.String())
-			span.RecordError(err)
-		}
-	}()
 
 	ctx, timeoutCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer timeoutCancel()
