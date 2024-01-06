@@ -1,3 +1,5 @@
+# not updated to the latest debian yet
+# https://github.com/chromedp/docker-headless-shell/pull/22
 FROM golang:1.21.5-bullseye AS build
 
 ADD . /src
