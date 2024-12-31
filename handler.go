@@ -7,21 +7,22 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
-	"github.com/labstack/echo/v4"
+
 	"go.ntppool.org/common/logger"
 	"go.ntppool.org/common/tracing"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func offsetHandler(mainCtx context.Context, upstream string) func(echo.Context) error {
 	return func(c echo.Context) error {
-		log := logger.Setup()
-
 		ctx := c.Request().Context()
-
+		log := logger.FromContext(ctx)
 		span := trace.SpanFromContext(ctx)
 
 		ipStr := c.Param("ip")
@@ -47,26 +48,27 @@ func offsetHandler(mainCtx context.Context, upstream string) func(echo.Context) 
 	}
 }
 
-func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byte, error) {
+var propagator = propagation.TraceContext{}
 
+func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byte, error) {
 	log := logger.Setup()
 	reqCtx, span := tracing.Tracer().Start(
 		reqCtx, "takeScreenshot",
 	)
 	defer span.End()
 
-	ctx, cancel := chromedp.NewContext(
+	chromeCtx, cancel := chromedp.NewContext(
 		mainCtx,
 		// chromedp.WithDebugf(log.Printf),
 	)
 	defer cancel() // this will close the tab
 
-	traceID := span.SpanContext().TraceID()
-
-	ctx, timeoutCancel := context.WithTimeout(ctx, 15*time.Second)
+	chromeCtx, timeoutCancel := context.WithTimeout(chromeCtx, 15*time.Second)
 	defer timeoutCancel()
 
 	url := fmt.Sprintf("%s/scores/%s?graph_only=1", upstream, ip)
+
+	log.DebugContext(chromeCtx, "url to load", "url", url)
 
 	viewX := 233
 	viewY := 501
@@ -75,17 +77,22 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 	// retina / hidpi / 2x screenshot
 	// emulateOpts := chromedp.EmulateScale(2)
 
+	traceMap := make(propagation.MapCarrier)
+	propagator.Inject(reqCtx, traceMap)
+
+	networkHeaders := network.Headers{}
+	for k, v := range traceMap {
+		networkHeaders[k] = v
+		log.DebugContext(reqCtx, "network header", "k", k, "v", v)
+	}
+
 	_, spanRun := tracing.Tracer().Start(
 		reqCtx, "chromedp.RunResponse",
 		trace.WithAttributes(attribute.String("url", url)),
 	)
-	resp, err := chromedp.RunResponse(ctx, chromedp.Tasks{
+	resp, err := chromedp.RunResponse(chromeCtx, chromedp.Tasks{
 		network.Enable(),
-		network.SetExtraHTTPHeaders(network.Headers(
-			map[string]interface{}{
-				"traceparent": traceID,
-			},
-		)),
+		network.SetExtraHTTPHeaders(networkHeaders),
 		chromedp.Navigate(url),
 		chromedp.EmulateViewport(int64(viewY), int64(viewX)), // emulateOpts),
 	})
@@ -108,7 +115,7 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 	spanRun.End()
 
 	// only wait 3 seconds for the page to load
-	loadingCtx, loadCancel := context.WithTimeout(ctx, 4*time.Second)
+	loadingCtx, loadCancel := context.WithTimeout(chromeCtx, 4*time.Second)
 	defer loadCancel()
 
 	_, spanLoad := tracing.Tracer().Start(
@@ -131,7 +138,7 @@ func takeScreenshot(mainCtx, reqCtx context.Context, upstream, ip string) ([]byt
 	_, spanShot := tracing.Tracer().Start(
 		reqCtx, "chromedp.Screenshot",
 	)
-	if err = chromedp.Run(ctx, chromedp.Tasks{
+	if err = chromedp.Run(chromeCtx, chromedp.Tasks{
 		chromedp.Screenshot(`#graph`, &buf, chromedp.NodeVisible),
 	}); err != nil {
 		log.ErrorContext(reqCtx, "screenshot", "err", err)

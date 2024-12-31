@@ -3,11 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
-
-	"net/http"
 
 	slogecho "github.com/samber/slog-echo"
 	"go.ntppool.org/common/health"
@@ -111,7 +110,6 @@ func main() {
 	if err != nil {
 		log.Warn("could not shutdown tracer", "err", err)
 	}
-
 }
 
 func RunAPI(e *echo.Echo, parentCtx context.Context) error {
@@ -155,7 +153,7 @@ func RunAPI(e *echo.Echo, parentCtx context.Context) error {
 					span.SetAttributes(attribute.String("url.query", q))
 				}
 
-				c.Response().Header().Set("Traceparent", span.SpanContext().TraceID().String())
+				c.Response().Header().Set("TraceID", span.SpanContext().TraceID().String())
 
 				return next(c)
 			}
