@@ -9,7 +9,7 @@ environment:
 
 steps:
   - name: test
-    image: golang:1.21.5
+    image: golang:1.23.4
     volumes:
       - name: go
         path: /go
@@ -48,6 +48,6 @@ volumes:
 
 ---
 kind: signature
-hmac: 28ec1625a44bc3bdfe90e89aeda345bc1bbf05dd4c359a3101df4c1c1b982103
+hmac: f35f566ecc92c3041bf6265d0d35835621497cdad9f80b2af37cc92949f5da08
 
 ...

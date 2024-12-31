@@ -1,6 +1,4 @@
-# not updated to the latest debian yet
-# https://github.com/chromedp/docker-headless-shell/pull/22
-FROM golang:1.21.5-bullseye AS build
+FROM golang:1.23.4-bookworm AS build
 
 ADD . /src
 
@@ -19,8 +17,11 @@ RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
 
 RUN ls -la
 
-FROM chromedp/headless-shell:latest
-RUN apt update; apt install -y dumb-init procps
+# check debian version with
+#   docker run --rm -ti --entrypoint /bin/bash chromedp/headless-shell:133.0.6905.0
+FROM chromedp/headless-shell:133.0.6905.0
+
+RUN apt-get clean; apt-get update; apt install -y dumb-init procps
 
 WORKDIR /app
 COPY --from=build /src/screensnap /app/screensnap
