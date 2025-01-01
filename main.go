@@ -137,6 +137,11 @@ func RunAPI(e *echo.Echo, parentCtx context.Context) error {
 
 	e.IPExtractor = echo.ExtractIPFromXFFHeader(trustOptions...)
 
+	e.Use(echo.WrapMiddleware(
+		otelhttp.NewMiddleware("screensnap",
+			otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
+		),
+	))
 	e.Use(otelecho.Middleware("screensnap"))
 
 	e.Use(
@@ -166,11 +171,6 @@ func RunAPI(e *echo.Echo, parentCtx context.Context) error {
 			WithSpanID:  true,
 			// WithRequestHeader: true,
 		},
-	))
-	e.Use(echo.WrapMiddleware(
-		otelhttp.NewMiddleware("screensnap",
-			otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
-		),
 	))
 
 	upstream := os.Getenv("upstream_base")
